@@ -1,0 +1,51 @@
+source(output(
+		OrderID as string,
+		OrderDate as string,
+		ShipDate as string,
+		CustomerID as string,
+		Segment as string,
+		Region as string,
+		ProductID as string,
+		Sales as string,
+		Quantity as string,
+		Profit as string
+	),
+	allowSchemaDrift: true,
+	validateSchema: false,
+	ignoreNoFilesFound: false) ~> source1
+source(output(
+		Region as string,
+		Manager as string
+	),
+	allowSchemaDrift: true,
+	validateSchema: false,
+	ignoreNoFilesFound: false) ~> source2
+source(output(
+		OrderID as string,
+		Returned as string
+	),
+	allowSchemaDrift: true,
+	validateSchema: false,
+	ignoreNoFilesFound: false) ~> source3
+source1, source2 join(source1@Region == source2@Region,
+	joinType:'left',
+	matchType:'exact',
+	ignoreSpaces: false,
+	broadcast: 'auto')~> join1
+join1, source3 join(source1@OrderID == source3@OrderID,
+	joinType:'left',
+	matchType:'exact',
+	ignoreSpaces: false,
+	broadcast: 'auto')~> join2
+join2 filter(Returned == 'No') ~> filter1
+filter1 derive(ProfitMargin = toDouble(Profit)/toDouble(Sales)) ~> derivedColumn1
+derivedColumn1 aggregate(groupBy(Manager),
+	Totalsales = sum(toDouble(Sales)),
+		TotalProfit = sum(toDouble(Profit)),
+		AvearageProfitMargin = avg(ProfitMargin)) ~> aggregate1
+aggregate1 sink(allowSchemaDrift: true,
+	validateSchema: false,
+	partitionFileNames:['Manager_Profit_Margin.csv'],
+	skipDuplicateMapInputs: true,
+	skipDuplicateMapOutputs: true,
+	partitionBy('hash', 1)) ~> sink1
